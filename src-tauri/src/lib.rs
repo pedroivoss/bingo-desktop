@@ -24,6 +24,8 @@ use sha2::Digest;
 use tauri::{Emitter, Manager, State};
 
 const FESTA_DEMO: i64 = 0;
+/// Versão das cartelas da demonstração (1 = as 40 fixas, iguais para todos). Só muda junto com a semente.
+const DEMO_VERSAO: i64 = 1;
 /// Versão do app: a mesma que o atualizador usa (a do pacote, tauri.conf.json), gravada ao iniciar.
 /// Não usar a do Cargo.toml: se as duas divergirem, o app se apresentaria ao servidor com uma versão
 /// e um executável de outra, e o painel marcaria "app alterado" em todos os computadores.
@@ -531,14 +533,18 @@ pub(crate) fn ranking_impl(st: &Estado, festa_id: i64, rodada_id: i64) -> R<Valu
 
 pub(crate) fn iniciar_demo_impl(st: &Estado, recomecar: bool) -> R<Value> {
     let conn = st.db.lock().unwrap();
-    if recomecar || db::festa_get(&conn, FESTA_DEMO).is_none() {
+    // demonstração de versões antigas (cartelas aleatórias por computador): troca pelas fixas
+    let atual = db::festa_get(&conn, FESTA_DEMO)
+        .and_then(|e| serde_json::from_str::<Value>(&e).ok())
+        .is_some_and(|e| e["festa"]["demo_versao"].as_i64() == Some(DEMO_VERSAO));
+    if recomecar || !atual {
         let _ = conn.execute("DELETE FROM cartelas WHERE festa_id = 0", []);
         for c in jogo::gerar_cartelas_demo(40) {
             db::cartela_set(&conn, FESTA_DEMO, &c)?;
         }
         let premio = |id: i64, titulo: &str, ordem: i64| json!({ "id": id, "titulo": titulo, "ordem": ordem, "encerrado_em": null, "pedras_removidas": 0, "reinicios": 0, "pedras": [], "vencedores": [] });
         let estado = json!({
-            "festa": { "id": 0, "nome": "Demonstração", "sorteio_automatico": true, "regra_empate_descricao": "Combine com o público antes de começar", "total_cartelas": 40, "demo": true },
+            "festa": { "id": 0, "nome": "Demonstração", "sorteio_automatico": true, "regra_empate_descricao": "Combine com o público antes de começar", "total_cartelas": 40, "demo": true, "demo_versao": DEMO_VERSAO },
             "rodadas": [{ "id": 1, "nome": "Principal", "tipo": "principal", "ordem": 0, "embaralhar": false, "formato": "folha",
                           "premios": [premio(1, "1º prêmio", 1), premio(2, "2º prêmio", 2)] }]
         });

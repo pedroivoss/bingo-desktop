@@ -128,12 +128,12 @@ async function iniciar(aviso?: string): Promise<void> {
             <input class="form-control form-control-lg text-center" id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="11"></div>
           <button class="btn btn-primary btn-lg w-100" id="btn-entrar">Entrar</button>
         </form>
-        <p class="small text-secondary mt-3 mb-0">Não tem conta? <a href="#" id="link-site">Crie grátis no site</a>.</p>
+        <p class="small text-secondary mt-3 mb-0">Não tem conta? <a href="#" id="link-site">Veja os planos e fale com a gente</a>.</p>
       </div></div></div>
       <div class="col-md-6"><div class="card h-100"><div class="card-body p-4 d-flex flex-column">
         <h2 class="h4">Experimentar sem conta</h2>
-        <p class="text-secondary">Demonstração gratuita com <strong>40 cartelas</strong> geradas neste computador. Funciona sem internet.</p>
-        <ul class="small text-secondary"><li>Sorteio manual ou automático com suspense</li><li>Conferência de cartela e confirmação do vencedor</li><li>Modo telão (tela cheia)</li></ul>
+        <p class="text-secondary">Demonstração gratuita com <strong>40 cartelas</strong>, sem cadastro e sem internet. As cartelas são as mesmas em qualquer computador: imprima o PDF e teste com a família.</p>
+        <ul class="small text-secondary"><li>Sorteio manual ou automático com suspense</li><li>Conferência de cartela e confirmação do vencedor</li><li>Modo telão (tela cheia)</li><li>PDF das 40 cartelas para imprimir</li></ul>
         <button class="btn btn-accent btn-lg mt-auto" id="btn-demo"><i class="fas fa-play me-1"></i> Abrir demonstração</button>
       </div></div></div>
     </div>
@@ -151,7 +151,7 @@ async function iniciar(aviso?: string): Promise<void> {
   });
   document.getElementById('link-site')!.addEventListener('click', (e) => {
     e.preventDefault();
-    openUrl(String(situacao.servidor).replace(/\/api\/desktop\/v1$/, '/cadastro'));
+    openUrl(String(situacao.servidor).replace(/\/api\/desktop\/v1$/, '/#planos'));
   });
   document.getElementById('btn-demo')!.addEventListener('click', async () => {
     await chamar('iniciar_demo', { recomecar: false });
@@ -232,7 +232,7 @@ async function telaFestas(): Promise<void> {
             <button class="btn btn-primary btn-abrir" data-id="${f.id}"><i class="fas fa-play me-1"></i>Abrir</button>
           </div>`).join('') : '<div class="alert alert-secondary">Nenhuma festa em uso nesta conta. Crie uma no site.</div>'}
         <div class="festa-item d-flex justify-content-between align-items-center gap-2">
-          <div><div class="fw-semibold">Demonstração</div><div class="small text-secondary">40 cartelas locais, sem internet</div></div>
+          <div><div class="fw-semibold">Demonstração</div><div class="small text-secondary">40 cartelas de teste, iguais em qualquer computador</div></div>
           <button class="btn btn-outline-primary" id="btn-demo2">Abrir</button>
         </div>
       </div>
@@ -483,7 +483,7 @@ function telaSorteio() {
   const demo = festaId === 0;
   app.innerHTML = `${topo(`
       <span class="small text-secondary" id="pendentes"></span>
-      ${demo ? '<button class="btn btn-sm btn-outline-secondary" id="btn-novas">Novas cartelas</button>' : '<button class="btn btn-sm btn-outline-primary" id="btn-sync"><i class="fas fa-rotate me-1"></i>Sincronizar</button>'}
+      ${demo ? '<button class="btn btn-sm btn-outline-secondary" id="btn-novas"><i class="fas fa-rotate-left me-1"></i>Recomeçar sorteio</button>' : '<button class="btn btn-sm btn-outline-primary" id="btn-sync"><i class="fas fa-rotate me-1"></i>Sincronizar</button>'}
       <button class="btn btn-sm btn-outline-primary" id="btn-pdfs"><i class="fas fa-file-pdf me-1"></i>Cartelas e PDFs</button>
       ${demo ? '' : '<button class="btn btn-sm btn-outline-primary" id="btn-registro"><i class="fas fa-list-check me-1"></i>Registro</button>'}
       <button class="btn btn-sm btn-primary" id="btn-telao"><i class="fas fa-expand me-1"></i>Telão</button>
@@ -551,7 +551,13 @@ function telaSorteio() {
 
   document.getElementById('btn-voltar')!.addEventListener('click', () => { sairTelao(); demo ? iniciarOuFestas() : telaFestas(); });
   document.getElementById('btn-sync')?.addEventListener('click', async () => { if (await sincronizarFesta(festaId!)) recarregar(); });
-  document.getElementById('btn-novas')?.addEventListener('click', async () => { await chamar('iniciar_demo', { recomecar: true }); recarregar(); toast('Novas 40 cartelas geradas.', 'success'); });
+  document.getElementById('btn-novas')?.addEventListener('click', async () => {
+    const r = await Swal.fire({ icon: 'question', title: 'Recomeçar o sorteio?', text: 'As pedras e os vencedores da demonstração são apagados. As 40 cartelas continuam as mesmas.', showCancelButton: true, confirmButtonText: 'Recomeçar', cancelButtonText: 'Cancelar' });
+    if (!r.isConfirmed) return;
+    await chamar('iniciar_demo', { recomecar: true });
+    recarregar();
+    toast('Sorteio da demonstração recomeçado.', 'success');
+  });
   document.getElementById('btn-telao')!.addEventListener('click', entrarTelao);
   document.getElementById('btn-pdfs')!.addEventListener('click', () => telaPdfs());
   document.getElementById('btn-registro')?.addEventListener('click', () => { sairTelao(); telaRegistro(); });

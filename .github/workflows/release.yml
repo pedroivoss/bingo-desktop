@@ -4,7 +4,9 @@
 # Como usar: Settings → Secrets and variables → Actions → Variables:
 #   BINGO_API_URL       = https://seu-dominio (sem /api no fim)
 #   BINGO_CHAVE_PUBLICA = saída de `php artisan bingo:desktop-chaves` no servidor de produção
-#   BINGO_FIXAR_CERTIFICADO = letsencrypt   (se o servidor usa certificado Let's Encrypt; recomendado)
+#   BINGO_FIXAR_CERTIFICADO = letsencrypt   SÓ se o app falar direto com um certificado Let's Encrypt.
+#                             Atrás do Cloudflare (bingodigital.ivocompany.com), NÃO crie esta variável:
+#                             o certificado é do Cloudflare (Google Trust Services etc.) e o app não conectaria.
 # e em Secrets:
 #   TAURI_SIGNING_PRIVATE_KEY = conteúdo de ~/.tauri/bingo-digital.key (assina as atualizações automáticas)
 # Depois: git tag v1.0.0 && git push origin v1.0.0   (ou "Run workflow" na aba Actions)

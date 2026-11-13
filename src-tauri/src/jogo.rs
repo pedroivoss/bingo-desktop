@@ -165,16 +165,27 @@ pub fn linhas_para(cartela: &Cartela, rodada: &Value) -> Vec<Vec<Option<i64>>> {
 
 // ------------------------------------------------------------------ demonstração
 
-/// Gera cartelas aleatórias para a demonstração (sem conta, sem internet).
+/// Semente da demonstração. NÃO MUDE: as 40 cartelas são as mesmas em todo computador e em
+/// toda versão do app (um PDF de demonstração impresso hoje continua valendo amanhã).
+const SEMENTE_DEMO: &str = "bingo-digital-demo-v1";
+
+/// Número pseudoaleatório estável: os 8 primeiros bytes do SHA-256 do texto.
+fn hash_estavel(texto: &str) -> u64 {
+    use sha2::{Digest, Sha256};
+    let d = Sha256::digest(texto.as_bytes());
+    u64::from_be_bytes(d[..8].try_into().unwrap())
+}
+
+/// Cartelas da demonstração (sem conta, sem internet): sempre as mesmas para todo mundo.
+/// Cada coluna pega os números da faixa (B 1–15, I 16–30...) na ordem do hash "semente|cartela|coluna|número".
 pub fn gerar_cartelas_demo(quantidade: i64) -> Vec<Cartela> {
-    use rand::seq::SliceRandom;
-    let mut rng = rand::rngs::OsRng;
+    const LETRAS: &[u8] = b"23456789ABCDEFGHJKMNPQRSTUVWXYZ";
     (1..=quantidade)
         .map(|n| {
             let numeros = (0..5)
                 .map(|c| {
                     let mut faixa: Vec<i64> = (c * 15 + 1..=c * 15 + 15).collect();
-                    faixa.shuffle(&mut rng);
+                    faixa.sort_by_key(|v| hash_estavel(&format!("{SEMENTE_DEMO}|{n}|{c}|{v}")));
                     let mut col: Vec<Option<i64>> = faixa.into_iter().take(if c == 2 { 4 } else { 5 }).map(Some).collect();
                     col.sort();
                     if c == 2 {
@@ -183,7 +194,9 @@ pub fn gerar_cartelas_demo(quantidade: i64) -> Vec<Cartela> {
                     col
                 })
                 .collect();
-            let verificador: String = (0..5).map(|_| *b"23456789ABCDEFGHJKMNPQRSTUVWXYZ".choose(&mut rng).unwrap() as char).collect();
+            let verificador: String = (0..5)
+                .map(|i| LETRAS[(hash_estavel(&format!("{SEMENTE_DEMO}|{n}|verificador|{i}")) % LETRAS.len() as u64) as usize] as char)
+                .collect();
             Cartela { codigo: format!("{n:04}"), numero: n, numeros, cancelada: false, motivo: None, verificador: Some(verificador) }
         })
         .collect()
@@ -221,6 +234,33 @@ mod testes {
         }
         assert_eq!(situacao(c, &posicoes(&r)).2, Some(24), "bateu na 24ª");
         assert_eq!(c.verificador.as_ref().map(|v| v.len()), Some(5));
+    }
+
+    const FIXO_CARTELA_1: &str = "[[Some(1), Some(8), Some(10), Some(11), Some(14)], [Some(16), Some(19), Some(22), Some(29), Some(30)], [Some(31), Some(34), None, Some(42), Some(44)], [Some(49), Some(50), Some(53), Some(55), Some(58)], [Some(61), Some(66), Some(67), Some(68), Some(75)]]";
+    const FIXO_VERIFICADOR_1: &str = "9KYKJ";
+
+    #[test]
+    fn demonstracao_igual_para_todos() {
+        let a = gerar_cartelas_demo(40);
+        assert_eq!(a.len(), 40);
+        let resumo = |v: &[Cartela]| v.iter().map(|c| (c.numeros.clone(), c.verificador.clone())).collect::<Vec<_>>();
+        assert_eq!(resumo(&a), resumo(&gerar_cartelas_demo(40)), "sempre as mesmas");
+        let unicas: std::collections::HashSet<String> = a.iter().map(|c| format!("{:?}", c.numeros)).collect();
+        assert_eq!(unicas.len(), 40, "nenhuma cartela repetida");
+        for c in &a {
+            for (i, col) in c.numeros.iter().enumerate() {
+                let i = i as i64;
+                let nums: Vec<i64> = col.iter().flatten().copied().collect();
+                assert_eq!(nums.len(), if i == 2 { 4 } else { 5 });
+                assert!(nums.iter().all(|v| (i * 15 + 1..=i * 15 + 15).contains(v)), "faixa da coluna");
+                assert!(nums.windows(2).all(|w| w[0] < w[1]), "crescente e sem repetir");
+            }
+            assert!(c.numeros[2][2].is_none(), "centro livre");
+        }
+        // trava a semente: se este teste quebrar, as cartelas impressas da demonstração mudaram
+        assert_eq!(a[0].numeros, gerar_cartelas_demo(1)[0].numeros);
+        assert_eq!(format!("{:?}", a[0].numeros), FIXO_CARTELA_1);
+        assert_eq!(a[0].verificador.as_deref(), Some(FIXO_VERIFICADOR_1));
     }
 
     #[test]
