@@ -1,0 +1,108 @@
+# Gera os instaladores do Bingo Digital para Windows, macOS (Apple Silicon e Intel) e Linux,
+# de graça, no GitHub Actions, e cria um rascunho de Release com os arquivos.
+#
+# Como usar: Settings → Secrets and variables → Actions → Variables:
+#   BINGO_API_URL       = https://seu-dominio (sem /api no fim)
+#   BINGO_CHAVE_PUBLICA = saída de `php artisan bingo:desktop-chaves` no servidor de produção
+#   BINGO_FIXAR_CERTIFICADO = letsencrypt   (se o servidor usa certificado Let's Encrypt; recomendado)
+# e em Secrets:
+#   TAURI_SIGNING_PRIVATE_KEY = conteúdo de ~/.tauri/bingo-digital.key (assina as atualizações automáticas)
+# Depois: git tag v1.0.0 && git push origin v1.0.0   (ou "Run workflow" na aba Actions)
+# Publicado o release: no site, Admin → Versões do app → cole o latest.json do release e clique em Publicar
+# (os computadores atualizam sozinhos ao abrir o app ou sincronizar).
+#
+# Sem certificado pago: macOS usa assinatura local ("-") e Windows sai sem assinatura
+# (aparecem avisos na 1ª instalação; o passo a passo está no README).
+name: release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  instaladores:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest      # Macs Apple Silicon (M1 em diante)
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest      # Macs Intel
+            args: --target x86_64-apple-darwin
+          - platform: ubuntu-22.04      # Linux (.deb, .rpm e AppImage)
+            args: ''
+          - platform: windows-latest    # Windows (instalador .exe e .msi)
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    env:
+      BINGO_API_URL: ${{ vars.BINGO_API_URL }}
+      BINGO_CHAVE_PUBLICA: ${{ vars.BINGO_CHAVE_PUBLICA }}
+      BINGO_FIXAR_CERTIFICADO: ${{ vars.BINGO_FIXAR_CERTIFICADO }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: conferir configuração de produção
+        shell: bash
+        run: |
+          if [ -z "$BINGO_API_URL" ] || [ -z "$BINGO_CHAVE_PUBLICA" ] || [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Configure BINGO_API_URL e BINGO_CHAVE_PUBLICA (Variables) e TAURI_SIGNING_PRIVATE_KEY (Secrets)."
+            exit 1
+          fi
+
+      - name: dependências do Linux
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: npm ci
+
+      - name: testes do núcleo (regras do jogo e licença)
+        working-directory: src-tauri
+        run: cargo test --lib
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'Bingo Digital v__VERSION__'
+          releaseBody: 'Instaladores do Bingo Digital. Veja no README como instalar sem susto (avisos de segurança do Windows e do macOS).'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      # Impressão digital oficial do executável (o app manda no cabeçalho X-App-Hash).
+      # Cole as linhas do resumo em BINGO_DESKTOP_HASHES no .env do servidor.
+      - name: impressão digital oficial
+        shell: bash
+        run: |
+          VERSAO=$(node -p "require('./package.json').version")
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            EXE=$(find src-tauri/target -path '*/bundle/macos/*.app/Contents/MacOS/*' -type f | head -1)
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            EXE=$(find src-tauri/target -path '*/release/*.exe' -name 'bingo-desktop.exe' | head -1)
+          else
+            EXE=$(find src-tauri/target -path '*/release/bingo-desktop' -type f | head -1)
+          fi
+          HASH=$( (sha256sum "$EXE" 2>/dev/null || shasum -a 256 "$EXE") | cut -d' ' -f1 )
+          echo "### Impressão digital (${{ matrix.platform }} ${{ matrix.args }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`${VERSAO}:${HASH}\`" >> "$GITHUB_STEP_SUMMARY"
