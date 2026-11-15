@@ -7,11 +7,12 @@
 //!   (os PDFs salvos pelo cliente não são tocados).
 //! - O sorteio roda local com as mesmas regras do servidor (jogo.rs) e vira uma fila de eventos,
 //!   enviada ao sincronizar. O servidor confere tudo de novo e é quem manda no final.
-//! - Demonstração: 40 cartelas geradas no próprio computador, sem conta e sem internet.
+//! - Demonstração: a festa de exemplo da home (20 cartelas + 2 extras), sem conta e sem internet (demo.rs).
 
 mod atualizacao;
 mod cartelas_pdf;
 mod db;
+mod demo;
 mod jogo;
 mod licenca;
 mod pdf;
@@ -24,8 +25,6 @@ use sha2::Digest;
 use tauri::{Emitter, Manager, State};
 
 const FESTA_DEMO: i64 = 0;
-/// Versão das cartelas da demonstração (1 = as 40 fixas, iguais para todos). Só muda junto com a semente.
-const DEMO_VERSAO: i64 = 1;
 /// Versão do app: a mesma que o atualizador usa (a do pacote, tauri.conf.json), gravada ao iniciar.
 /// Não usar a do Cargo.toml: se as duas divergirem, o app se apresentaria ao servidor com uma versão
 /// e um executável de outra, e o painel marcaria "app alterado" em todos os computadores.
@@ -533,22 +532,16 @@ pub(crate) fn ranking_impl(st: &Estado, festa_id: i64, rodada_id: i64) -> R<Valu
 
 pub(crate) fn iniciar_demo_impl(st: &Estado, recomecar: bool) -> R<Value> {
     let conn = st.db.lock().unwrap();
-    // demonstração de versões antigas (cartelas aleatórias por computador): troca pelas fixas
+    // demonstração de versões antigas (aleatória por computador ou as 40 sem artes): troca pela atual
     let atual = db::festa_get(&conn, FESTA_DEMO)
         .and_then(|e| serde_json::from_str::<Value>(&e).ok())
-        .is_some_and(|e| e["festa"]["demo_versao"].as_i64() == Some(DEMO_VERSAO));
+        .is_some_and(|e| e["festa"]["demo_versao"].as_i64() == Some(demo::VERSAO));
     if recomecar || !atual {
         let _ = conn.execute("DELETE FROM cartelas WHERE festa_id = 0", []);
-        for c in jogo::gerar_cartelas_demo(40) {
+        for c in jogo::gerar_cartelas_demo(demo::CARTELAS) {
             db::cartela_set(&conn, FESTA_DEMO, &c)?;
         }
-        let premio = |id: i64, titulo: &str, ordem: i64| json!({ "id": id, "titulo": titulo, "ordem": ordem, "encerrado_em": null, "pedras_removidas": 0, "reinicios": 0, "pedras": [], "vencedores": [] });
-        let estado = json!({
-            "festa": { "id": 0, "nome": "Demonstração", "sorteio_automatico": true, "regra_empate_descricao": "Combine com o público antes de começar", "total_cartelas": 40, "demo": true, "demo_versao": DEMO_VERSAO },
-            "rodadas": [{ "id": 1, "nome": "Principal", "tipo": "principal", "ordem": 0, "embaralhar": false, "formato": "folha",
-                          "premios": [premio(1, "1º prêmio", 1), premio(2, "2º prêmio", 2)] }]
-        });
-        db::festa_set(&conn, FESTA_DEMO, &estado.to_string())?;
+        db::festa_set(&conn, FESTA_DEMO, &demo::estado().to_string())?;
     }
     Ok(json!({ "ok": true }))
 }
@@ -764,7 +757,8 @@ fn montar_pdf(st: &Estado, festa_id: i64, rodada_id: i64, primeira: i64, ultima:
     } else {
         (arte_local(st, &estado, "pix"), f["pix_texto"].as_str().map(String::from))
     };
-    let arte = cartelas_pdf::Arte {
+    // demonstração: as artes de exemplo embutidas no app (as mesmas da prévia da home)
+    let arte = if festa_id == FESTA_DEMO { demo::arte() } else { cartelas_pdf::Arte {
         cabecalho: cabecalho_rodada,
         marca_dagua: arte_local(st, &estado, "marca_dagua"),
         coringa: arte_local(st, &estado, "coringa"),
@@ -772,7 +766,7 @@ fn montar_pdf(st: &Estado, festa_id: i64, rodada_id: i64, primeira: i64, ultima:
         pix: pix_rodada,
         selo_qr: arte_local(st, &estado, "selo_qr"),
         patrocinadores,
-    };
+    } };
     let layout = cartelas_pdf::Layout {
         marca_grande: layout_srv["marca_grande"].as_bool().unwrap_or(false),
         chancela: layout_srv["chancela"].as_bool().unwrap_or(false),
@@ -945,6 +939,11 @@ async fn gerar_pdfs(app: tauri::AppHandle, st: State<'_, Estado>, festa_id: i64,
 #[tauri::command]
 fn patrocinadores(st: State<'_, Estado>, festa_id: i64) -> R<Value> {
     use base64::Engine;
+    if festa_id == FESTA_DEMO {
+        return Ok(json!(demo::patrocinadores().map(|(nome, png)| json!({
+            "nome": nome, "imagem": format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)),
+        })).collect::<Vec<_>>()));
+    }
     let festa = { ler_estado(&st.db.lock().unwrap(), festa_id)? };
     let lista: Vec<Value> = festa["festa"]["patrocinadores"].as_array().cloned().unwrap_or_default().iter().filter_map(|p| {
         let bytes = arte_por_sha(&st, p["sha256"].as_str()?)?;

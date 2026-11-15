@@ -241,12 +241,12 @@ mod testes {
 
     #[test]
     fn demonstracao_igual_para_todos() {
-        let a = gerar_cartelas_demo(40);
-        assert_eq!(a.len(), 40);
+        let a = gerar_cartelas_demo(20);
+        assert_eq!(a.len(), 20);
         let resumo = |v: &[Cartela]| v.iter().map(|c| (c.numeros.clone(), c.verificador.clone())).collect::<Vec<_>>();
-        assert_eq!(resumo(&a), resumo(&gerar_cartelas_demo(40)), "sempre as mesmas");
+        assert_eq!(resumo(&a), resumo(&gerar_cartelas_demo(20)), "sempre as mesmas");
         let unicas: std::collections::HashSet<String> = a.iter().map(|c| format!("{:?}", c.numeros)).collect();
-        assert_eq!(unicas.len(), 40, "nenhuma cartela repetida");
+        assert_eq!(unicas.len(), 20, "nenhuma cartela repetida");
         for c in &a {
             for (i, col) in c.numeros.iter().enumerate() {
                 let i = i as i64;

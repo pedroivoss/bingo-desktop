@@ -1,5 +1,7 @@
 # Gera os instaladores do Bingo Digital para Windows, macOS (Apple Silicon e Intel) e Linux,
-# de graça, no GitHub Actions, e cria um rascunho de Release com os arquivos.
+# de graça, no GitHub Actions, e PUBLICA o Release (com latest.json e hashes.txt) quando os 4 terminam bem.
+# O site (bingo:desktop-versoes: no deploy, de hora em hora e no botão do Admin › Versões) puxa sozinho
+# a versão nova, os instaladores da página inicial e as impressões digitais oficiais.
 #
 # Como usar: Settings → Secrets and variables → Actions → Variables:
 #   BINGO_API_URL       = https://seu-dominio (sem /api no fim)
@@ -9,9 +11,8 @@
 #                             o certificado é do Cloudflare (Google Trust Services etc.) e o app não conectaria.
 # e em Secrets:
 #   TAURI_SIGNING_PRIVATE_KEY = conteúdo de ~/.tauri/bingo-digital.key (assina as atualizações automáticas)
-# Depois: git tag v1.0.0 && git push origin v1.0.0   (ou "Run workflow" na aba Actions)
-# Publicado o release: no site, Admin → Versões do app → cole o latest.json do release e clique em Publicar
-# (os computadores atualizam sozinhos ao abrir o app ou sincronizar).
+# Lançar versão: bash scripts/nova-versao.sh 1.2.0   (troca a versão, faz o commit, a tag e o push)
+# Se uma plataforma falhar, o release fica como RASCUNHO e o site não recebe nada (corrija e rode de novo).
 #
 # Sem certificado pago: macOS usa assinatura local ("-") e Windows sai sem assinatura
 # (aparecem avisos na 1ª instalação; o passo a passo está no README).
@@ -47,6 +48,16 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
     steps:
       - uses: actions/checkout@v4
+
+      - name: tag igual à versão do app
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSAO=$(node -p "require('./package.json').version")
+          if [ "v$VERSAO" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::A tag é $GITHUB_REF_NAME mas o package.json está em $VERSAO. Use scripts/nova-versao.sh."
+            exit 1
+          fi
 
       - name: conferir configuração de produção
         shell: bash
@@ -93,7 +104,7 @@ jobs:
           args: ${{ matrix.args }}
 
       # Impressão digital oficial do executável (o app manda no cabeçalho X-App-Hash).
-      # Cole as linhas do resumo em BINGO_DESKTOP_HASHES no .env do servidor.
+      # Vai para o hashes.txt do release (o site lê sozinho); também aparece no resumo do run.
       - name: impressão digital oficial
         shell: bash
         run: |
@@ -108,3 +119,33 @@ jobs:
           HASH=$( (sha256sum "$EXE" 2>/dev/null || shasum -a 256 "$EXE") | cut -d' ' -f1 )
           echo "### Impressão digital (${{ matrix.platform }} ${{ matrix.args }})" >> "$GITHUB_STEP_SUMMARY"
           echo "\`${VERSAO}:${HASH}\`" >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p hash && echo "${VERSAO}:${HASH}" > hash/hash.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hash-${{ strategy.job-index }}
+          path: hash/hash.txt
+
+  # Só quando os 4 sistemas deram certo: junta as impressões digitais no hashes.txt e publica o release.
+  publicar:
+    needs: instaladores
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hash-*
+          path: hashes
+      - name: hashes.txt e publicar o release
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          cat hashes/*/hash.txt | sort -u > hashes.txt
+          cat hashes.txt
+          gh release upload "$TAG" hashes.txt --clobber --repo "$GITHUB_REPOSITORY"
+          gh release edit "$TAG" --draft=false --latest --repo "$GITHUB_REPOSITORY"
+          echo "### Release $TAG publicado" >> "$GITHUB_STEP_SUMMARY"
+          echo "O site cadastra e publica a versão sozinho no próximo deploy, em até 1 hora, ou já no botão Admin › Versões › Buscar versão nova no GitHub." >> "$GITHUB_STEP_SUMMARY"

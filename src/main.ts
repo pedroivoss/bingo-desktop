@@ -132,8 +132,8 @@ async function iniciar(aviso?: string): Promise<void> {
       </div></div></div>
       <div class="col-md-6"><div class="card h-100"><div class="card-body p-4 d-flex flex-column">
         <h2 class="h4">Experimentar sem conta</h2>
-        <p class="text-secondary">Demonstração gratuita com <strong>40 cartelas</strong>, sem cadastro e sem internet. As cartelas são as mesmas em qualquer computador: imprima o PDF e teste com a família.</p>
-        <ul class="small text-secondary"><li>Sorteio manual ou automático com suspense</li><li>Conferência de cartela e confirmação do vencedor</li><li>Modo telão (tela cheia)</li><li>PDF das 40 cartelas para imprimir</li></ul>
+        <p class="text-secondary">Demonstração gratuita, sem cadastro e sem internet: a festa de exemplo do site com <strong>20 cartelas e 6 prêmios</strong>, mais 2 rodadas extras (folha inteira e meia folha). As cartelas são as mesmas em qualquer computador: imprima os PDFs e teste com a família.</p>
+        <ul class="small text-secondary"><li>Sorteio manual ou automático com suspense</li><li>Conferência de cartela e confirmação do vencedor</li><li>Modo telão (tela cheia)</li><li>PDFs prontos para imprimir, no modelo com cabeçalho, Pix, sua logo e patrocinadores</li></ul>
         <button class="btn btn-accent btn-lg mt-auto" id="btn-demo"><i class="fas fa-play me-1"></i> Abrir demonstração</button>
       </div></div></div>
     </div>
@@ -232,7 +232,7 @@ async function telaFestas(): Promise<void> {
             <button class="btn btn-primary btn-abrir" data-id="${f.id}"><i class="fas fa-play me-1"></i>Abrir</button>
           </div>`).join('') : '<div class="alert alert-secondary">Nenhuma festa em uso nesta conta. Crie uma no site.</div>'}
         <div class="festa-item d-flex justify-content-between align-items-center gap-2">
-          <div><div class="fw-semibold">Demonstração</div><div class="small text-secondary">40 cartelas de teste, iguais em qualquer computador</div></div>
+          <div><div class="fw-semibold">Demonstração</div><div class="small text-secondary">20 cartelas + 2 rodadas extras de teste, iguais em qualquer computador</div></div>
           <button class="btn btn-outline-primary" id="btn-demo2">Abrir</button>
         </div>
       </div>
@@ -352,6 +352,7 @@ async function telaPdfs() {
   app.innerHTML = `${topo(`<button class="btn btn-sm btn-outline-secondary" id="btn-voltar-sorteio"><i class="fas fa-arrow-left me-1"></i>Sorteio</button>`)}
   <main class="container py-4" style="max-width:1100px">
     <h1 class="h3 mb-1">${esc(estado.festa.nome)} — cartelas e PDFs</h1>
+    ${demo ? `<p class="text-secondary">Na demonstração, as cartelas saem no <strong>modelo de exemplo do site</strong>: cabeçalho, Pix, "SUA LOGO" e patrocinadores de mentira. Com a sua conta, entram o cabeçalho, a logo, o Pix e os patrocinadores da sua festa, montados no site.</p>` : ''}
     <p class="text-secondary">Os PDFs são gerados <strong>neste computador</strong>, com o layout montado no site, e salvos na pasta que você escolher (sugestão: <em>Documentos › Bingo Digital › ${esc(estado.festa.nome)} › PDFs</em>, junto das imagens e dos patrocinadores da festa). O servidor guarda só o registro de cada arquivo. Se um arquivo sumir, gere de novo: as cartelas saem iguais.</p>
     <div class="row g-3">
       ${demo ? '' : `<div class="col-lg-5"><div class="card h-100"><div class="card-body">
@@ -361,6 +362,15 @@ async function telaPdfs() {
       </div></div></div>`}
       <div class="${demo ? 'col-12' : 'col-lg-7'}"><div class="card h-100"><div class="card-body">
         <h2 class="h6 fw-semibold"><i class="fas fa-file-pdf me-1"></i>Gerar PDFs</h2>
+        ${demo ? `<div class="d-flex flex-wrap align-items-center gap-3 mb-3 pb-3 border-bottom">
+          <ul class="small text-secondary mb-0 flex-grow-1">
+            <li><strong>Principal</strong>: 20 cartelas em folha inteira, uma grade para cada um dos 6 prêmios</li>
+            <li><strong>Extra 1</strong>: 4 cartelas em folha inteira, com "EXTRA 1" na lateral</li>
+            <li><strong>Extra 2</strong>: 4 cartelas em meia folha (2 folhas, com linha de corte)</li>
+          </ul>
+          <button class="btn btn-accent" id="btn-gerar-demo"><i class="fas fa-file-pdf me-1"></i>Gerar os 3 PDFs de exemplo</button>
+        </div>
+        <p class="small text-secondary mb-2">Ou gere uma rodada só, escolhendo o formato:</p>` : ''}
         <div class="d-flex flex-wrap gap-2">
           <select class="form-select" id="pdf-rodada" style="max-width:280px">${rodadas.map((r) => `<option value="${r.id}">${esc(r.nome)} (${r.tipo === 'principal' ? 'todas' : r.cartela_inicio + '–' + r.cartela_fim}${r.embaralhar && r.tipo !== 'principal' ? ', embaralhada' : ''})</option>`).join('')}</select>
           <select class="form-select" id="pdf-formato" style="max-width:260px" aria-label="Formato das cartelas da rodada extra">
@@ -402,10 +412,11 @@ async function telaPdfs() {
   selRodada.addEventListener('change', aplicarFormato);
   aplicarFormato();
 
-  document.getElementById('btn-gerar-pdfs')!.addEventListener('click', async () => {
+  /** Gera os PDFs de uma ou mais rodadas (cada uma no seu formato) na pasta escolhida. */
+  const gerar = async (lista: { rodadaId: number; formato: string | null }[]) => {
     // sugestão: Documentos/Bingo Digital/<festa>/PDFs (o cliente pode escolher outra)
     let sugestao: string | undefined;
-    try { sugestao = (await chamar<string | null>('pasta_festa', { festaId, sub: 'PDFs' })) ?? undefined; } catch { /* demo */ }
+    try { sugestao = (await chamar<string | null>('pasta_festa', { festaId, sub: 'PDFs' })) ?? undefined; } catch { /* sem pasta Documentos */ }
     const pasta = await escolherPasta({ directory: true, title: 'Onde salvar os PDFs das cartelas?', defaultPath: sugestao });
     if (!pasta) return;
     ocupado.abrir('Gerando os PDFs das cartelas…', 'Preparando…');
@@ -415,18 +426,26 @@ async function telaPdfs() {
       ocupado.progresso(pct(p.feitos, p.total), `Arquivo ${p.feitos} de ${p.total}: ${p.arquivo}`);
     });
     try {
-      const r: Json = await chamar('gerar_pdfs', {
-        festaId, rodadaId: Number((document.getElementById('pdf-rodada') as HTMLSelectElement).value),
-        porArquivo: Number((document.getElementById('pdf-qtd') as HTMLSelectElement).value), pasta: String(pasta),
-        formato: selFormato.hidden ? null : selFormato.value,
-      });
+      const caminhos: string[] = [];
+      for (const item of lista) {
+        const r: Json = await chamar('gerar_pdfs', {
+          festaId, rodadaId: item.rodadaId, porArquivo: Number((document.getElementById('pdf-qtd') as HTMLSelectElement).value),
+          pasta: String(pasta), formato: item.formato,
+        });
+        caminhos.push(...(r.caminhos ?? []));
+      }
       ocupado.fechar();
-      const abrir = await Swal.fire({ icon: 'success', title: `${r.arquivos} arquivo(s) de cartelas salvo(s)`, text: String(pasta),
+      const abrir = await Swal.fire({ icon: 'success', title: `${caminhos.length} arquivo(s) de cartelas salvo(s)`, text: String(pasta),
         showCancelButton: true, confirmButtonText: '<i class="fas fa-folder-open me-1"></i> Abrir a pasta', cancelButtonText: 'Fechar' });
-      if (abrir.isConfirmed && r.caminhos?.[0]) revealItemInDir(r.caminhos[0]).catch(() => {});
+      if (abrir.isConfirmed && caminhos[0]) revealItemInDir(caminhos[0]).catch(() => {});
       desenharListaPdfs();
     } catch (e) { ocupado.fechar(); mostrarErro(e); } finally { desligar(); ocupado.fechar(); }
-  });
+  };
+  document.getElementById('btn-gerar-pdfs')!.addEventListener('click', () => gerar([
+    { rodadaId: Number(selRodada.value), formato: selFormato.hidden ? null : selFormato.value },
+  ]));
+  // demonstração: os 3 modelos de uma vez, cada rodada no seu formato padrão
+  document.getElementById('btn-gerar-demo')?.addEventListener('click', () => gerar(rodadas.map((r) => ({ rodadaId: Number(r.id), formato: null }))));
   desenharListaPdfs();
 }
 
@@ -552,7 +571,7 @@ function telaSorteio() {
   document.getElementById('btn-voltar')!.addEventListener('click', () => { sairTelao(); demo ? iniciarOuFestas() : telaFestas(); });
   document.getElementById('btn-sync')?.addEventListener('click', async () => { if (await sincronizarFesta(festaId!)) recarregar(); });
   document.getElementById('btn-novas')?.addEventListener('click', async () => {
-    const r = await Swal.fire({ icon: 'question', title: 'Recomeçar o sorteio?', text: 'As pedras e os vencedores da demonstração são apagados. As 40 cartelas continuam as mesmas.', showCancelButton: true, confirmButtonText: 'Recomeçar', cancelButtonText: 'Cancelar' });
+    const r = await Swal.fire({ icon: 'question', title: 'Recomeçar o sorteio?', text: 'As pedras e os vencedores da demonstração são apagados. As cartelas continuam as mesmas.', showCancelButton: true, confirmButtonText: 'Recomeçar', cancelButtonText: 'Cancelar' });
     if (!r.isConfirmed) return;
     await chamar('iniciar_demo', { recomecar: true });
     recarregar();

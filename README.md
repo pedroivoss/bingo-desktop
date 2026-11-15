@@ -3,7 +3,7 @@
 App para Windows, macOS e Linux (Tauri 2 + Rust + TypeScript). Conversa com o servidor Laravel
 pela API descrita em `../Bingo/docs/API-DESKTOP.md`.
 
-- **Demonstração** sem conta: 40 cartelas geradas no computador, funciona sem internet.
+- **Demonstração** sem conta: a festa de exemplo do site (20 cartelas com 6 prêmios + Extra 1 em folha inteira e Extra 2 em meia folha), com as artes de exemplo embutidas; funciona sem internet.
 - **Com a conta**: baixa as festas e cartelas da licença, faz o sorteio até offline (mesmas regras
   da web) e envia tudo ao sincronizar. A licença é assinada pelo servidor (Ed25519) e vale 10 dias
   sem internet; depois disso, ou com o relógio do computador voltado para trás, o app apaga os
@@ -41,15 +41,16 @@ variáveis de ambiente **na compilação**.
 2. Em **Settings → Secrets and variables → Actions → Variables**, crie `BINGO_API_URL` e
    `BINGO_CHAVE_PUBLICA` (a chave pública do servidor de produção: `php artisan bingo:desktop-chaves`),
    `BINGO_FIXAR_CERTIFICADO=letsencrypt` (opcional) e, em **Secrets**, `TAURI_SIGNING_PRIVATE_KEY`.
-3. Suba a versão: `git tag v1.0.0 && git push origin v1.0.0`.
+3. Com tudo commitado, lance a versão: `bash scripts/nova-versao.sh 1.2.0`. O script troca a versão nos 4
+   arquivos, faz o commit e a tag `v1.2.0` e envia para o GitHub.
 4. O workflow `.github/workflows/release.yml` gera Windows (.exe/.msi), macOS (Apple Silicon e
-   Intel, .dmg) e Linux (.deb/.rpm/.AppImage) e cria um **rascunho de Release** com os arquivos.
-5. Publique o Release no GitHub (os arquivos precisam ser baixáveis sem login: repositório público, ou
-   copie os arquivos para um lugar público) e cole as impressões digitais do resumo em `BINGO_DESKTOP_HASHES`.
-6. No site, **Admin → Computadores → Versões do app**: cole o `latest.json` do release, preencha os links
-   dos instaladores (aparecem na página inicial) e clique em **Publicar**. Pronto: cada computador recebe a
-   versão nova na próxima vez que abrir o app ou sincronizar. Marque **Obrigatória** quando for uma correção
-   importante: app mais antigo para de sincronizar até atualizar.
+   Intel, .dmg) e Linux (.deb/.rpm/.AppImage). Se os 4 derem certo, **publica o Release** com o `latest.json`
+   e o `hashes.txt` (impressões digitais oficiais). Se algum falhar, fica como rascunho e nada chega ao site.
+5. O site puxa sozinho (`php artisan bingo:desktop-versoes`): no deploy, de hora em hora (cron do
+   `schedule:run`) ou na hora pelo botão **Admin → Versões do app → Buscar versão nova no GitHub**. A versão é
+   cadastrada já **publicada**, com os links dos instaladores da página inicial e as impressões digitais. Cada
+   computador recebe na próxima vez que abrir o app ou sincronizar. Para revisar antes de publicar, use
+   `BINGO_DESKTOP_AUTO_PUBLICAR=false` no `.env` do site. **Obrigatória** continua sendo marcada no painel.
 
 ## Como os computadores se atualizam
 
@@ -71,7 +72,7 @@ um release completo usa cerca de 300–400. Repositório público não tem limit
 |---|---|
 | Código das telas ofuscado | `vite build` minifica e ofusca (`rollup-plugin-obfuscator`); sem DevTools, menu "Inspecionar" e atalhos na versão de produção. |
 | Regras e segredos fora do app | Cartelas nascem no servidor; licença assinada (Ed25519, só a chave pública no app); todo sorteio é conferido de novo no servidor. |
-| Impressão digital do app | O app manda o SHA-256 do próprio executável (`X-App-Hash`). Admin → **Computadores** marca app que não é o oficial ou que mudou sem mudar a versão. O workflow de release mostra as impressões oficiais: cole em `BINGO_DESKTOP_HASHES` no `.env` do site. |
+| Impressão digital do app | O app manda o SHA-256 do próprio executável (`X-App-Hash`). Admin → **Computadores** marca app que não é o oficial ou que mudou sem mudar a versão. O release traz as impressões oficiais no `hashes.txt` e o site lê sozinho (`BINGO_DESKTOP_HASHES` no `.env` continua valendo para versões antigas). |
 | Rastreio de vazamento | Cada página de PDF leva `ref {festa}-{computador}-{1ª cartela}` no canto. Admin → Computadores → "Rastrear PDF" diz de qual conta/computador saiu. |
 | Fixação de certificado | Com `BINGO_FIXAR_CERTIFICADO=letsencrypt` no build, o app só confia nas raízes do Let's Encrypt (`src-tauri/certs`): proxies que interceptam o tráfego deixam de funcionar. Só ligue se o certificado do servidor for Let's Encrypt (o CloudPanel usa). |
 | Atualização automática assinada | `tauri-plugin-updater`: o app procura versão nova ao abrir e ao sincronizar e só instala pacotes assinados com a sua chave (`~/.tauri/bingo-digital.key`, grátis). Quem decide a versão oferecida é o painel (Admin → Versões do app). |
